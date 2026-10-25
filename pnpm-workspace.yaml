@@ -4,6 +4,7 @@ packages:
 allowBuilds:
   "@parcel/watcher": true
   "@swc/core": true
+  esbuild: set this to true or false
   pnpm: true
   unrs-resolver: true
 minimumReleaseAgeExclude:
