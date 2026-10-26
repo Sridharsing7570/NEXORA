@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
@@ -103,31 +103,38 @@ export function TextTabs<T extends string>({
   );
 }
 
-/** Rounded pill button. `filled` is the primary ink button; otherwise outlined. */
+/**
+ * Rounded pill button. `filled` is the primary ink button; otherwise outlined.
+ * `loading` shows a spinner and blocks taps, so a request cannot be sent twice.
+ */
 export function PillButton({
   label,
   onPress,
   filled = true,
   leading,
+  loading = false,
 }: {
   label: string;
   onPress: () => void;
   filled?: boolean;
   leading?: ReactNode;
+  loading?: boolean;
 }) {
   const theme = useTheme();
   return (
     <Pressable
       onPress={onPress}
+      disabled={loading}
       accessibilityRole="button"
+      accessibilityState={{ busy: loading, disabled: loading }}
       style={({ pressed }) => [
         styles.pill,
         filled
           ? { backgroundColor: theme.buttonBackground }
           : { borderWidth: 1, borderColor: theme.rule },
-        pressed && { opacity: 0.75 },
+        (pressed || loading) && { opacity: 0.75 },
       ]}>
-      {leading}
+      {loading ? <ActivityIndicator color={filled ? theme.buttonText : theme.text} /> : leading}
       <ThemedText
         type="body"
         style={{ fontWeight: 600, color: filled ? theme.buttonText : theme.text }}>

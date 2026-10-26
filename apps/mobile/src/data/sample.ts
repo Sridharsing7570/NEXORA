@@ -77,8 +77,6 @@ export type JournalEntry = {
   reflection: string;
 };
 
-export const sampleUser = { name: 'Sridhar' };
-
 export const collections: Collection[] = [
   { id: 'c-system-design', name: 'System Design' },
   { id: 'c-interview', name: 'Interview Prep' },

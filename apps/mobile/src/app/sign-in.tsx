@@ -1,5 +1,13 @@
+import {
+  loginSchema,
+  phoneRequestCodeSchema,
+  phoneVerifySchema,
+  registerSchema,
+} from '@repo/api/auth/auth.schemas';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -7,62 +15,109 @@ import {
   StyleSheet,
   TextInput,
   View,
-  type TextInputProps,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AuthField, FormError, FormNotice, validate } from '@/components/auth-form';
 import { ThemedText } from '@/components/themed-text';
 import { PillButton, TextTabs } from '@/components/ui/primitives';
 import { Spacing, TouchTarget } from '@/constants/theme';
+import { errorMessage } from '@/lib/api';
+import { authApi } from '@/lib/auth-api';
 import { useSession } from '@/hooks/use-session';
 import { useTheme } from '@/hooks/use-theme';
 
 type Method = 'email' | 'phone';
+type EmailMode = 'signIn' | 'register';
 
 const methods = [
   { value: 'email', label: 'Email' },
   { value: 'phone', label: 'Phone number' },
 ] as const;
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** Phone sign-in currently offers India only; the country code becomes a picker later. */
+const COUNTRY_CODE = '+91';
 
 export default function SignInScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { signIn } = useSession();
+  const router = useRouter();
+  const { completeSignIn } = useSession();
 
   const [method, setMethod] = useState<Method>('email');
+  const [emailMode, setEmailMode] = useState<EmailMode>('signIn');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const fullPhone = `${COUNTRY_CODE}${phone.replace(/\D/g, '')}`;
+
+  /** Runs an API call with a loading state and shows its error message on failure. */
+  const run = async (task: () => Promise<void>) => {
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      await task();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitEmail = () => {
+    if (emailMode === 'signIn') {
+      const parsed = validate(loginSchema, { email, password });
+      if (parsed.error !== null) return setError(parsed.error);
+      void run(async () => completeSignIn(await authApi.login(parsed.data)));
+    } else {
+      const parsed = validate(registerSchema, { email, password, name: name.trim() || undefined });
+      if (parsed.error !== null) return setError(parsed.error);
+      void run(async () => completeSignIn(await authApi.register(parsed.data)));
+    }
+  };
+
+  const sendCode = () => {
+    const parsed = validate(phoneRequestCodeSchema, { phone: fullPhone });
+    if (parsed.error !== null) return setError(parsed.error);
+
+    void run(async () => {
+      await authApi.requestPhoneCode(parsed.data.phone);
+      setCodeSent(true);
+      setNotice(`We sent a 6-digit code to ${parsed.data.phone}.`);
+    });
+  };
+
+  const verifyCode = () => {
+    const parsed = validate(phoneVerifySchema, { phone: fullPhone, code });
+    if (parsed.error !== null) return setError(parsed.error);
+
+    void run(async () => {
+      await completeSignIn(await authApi.verifyPhone(parsed.data));
+    });
+  };
 
   const changeMethod = (next: Method) => {
     setMethod(next);
     setError(null);
+    setNotice(null);
   };
 
-  // These handlers only validate input; they call the auth API once it exists.
-  const submitEmail = () => {
-    if (!EMAIL_PATTERN.test(email.trim())) return setError('Enter a valid email address.');
-    if (password.length < 8) return setError('Password must be at least 8 characters.');
+  const toggleEmailMode = () => {
+    setMethod('email');
+    setEmailMode((mode) => (mode === 'signIn' ? 'register' : 'signIn'));
     setError(null);
-    signIn();
   };
 
-  const sendCode = () => {
-    if (phone.replace(/\D/g, '').length < 10) return setError('Enter a 10-digit phone number.');
-    setError(null);
-    setCodeSent(true);
-  };
-
-  const verifyCode = () => {
-    if (!/^\d{6}$/.test(code)) return setError('Enter the 6-digit code.');
-    setError(null);
-    signIn();
-  };
+  const signInWithGoogle = () =>
+    Alert.alert('Google sign-in', 'Google sign-in is not available in this version of the app yet.');
 
   return (
     <KeyboardAvoidingView
@@ -80,20 +135,22 @@ export default function SignInScreen() {
 
         <View style={styles.intro}>
           <ThemedText type="display" accessibilityRole="header">
-            Your knowledge,{'\n'}
+            {emailMode === 'register' && method === 'email' ? 'Start your\n' : 'Your knowledge,\n'}
             <ThemedText type="display" style={{ fontStyle: 'italic', color: theme.accent }}>
-              connected.
+              {emailMode === 'register' && method === 'email' ? 'second brain.' : 'connected.'}
             </ThemedText>
           </ThemedText>
           <ThemedText type="reading" themeColor="textBody">
-            Sign in to pick up where you left off.
+            {emailMode === 'register' && method === 'email'
+              ? 'Create an account to start capturing what you learn.'
+              : 'Sign in to pick up where you left off.'}
           </ThemedText>
         </View>
 
         <PillButton
           label="Continue with Google"
           filled={false}
-          onPress={signIn}
+          onPress={signInWithGoogle}
           leading={<ThemedText style={styles.googleMark}>G</ThemedText>}
         />
 
@@ -102,7 +159,17 @@ export default function SignInScreen() {
 
           {method === 'email' ? (
             <>
-              <Field
+              {emailMode === 'register' ? (
+                <AuthField
+                  label="Name"
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="What should we call you?"
+                  autoComplete="name"
+                  textContentType="name"
+                />
+              ) : null}
+              <AuthField
                 label="Email"
                 value={email}
                 onChangeText={setEmail}
@@ -112,25 +179,39 @@ export default function SignInScreen() {
                 autoComplete="email"
                 textContentType="emailAddress"
               />
-              <Field
-                label="Password"
-                value={password}
-                onChangeText={setPassword}
-                placeholder="At least 8 characters"
-                secureTextEntry
-                autoComplete="current-password"
-                textContentType="password"
-                onSubmitEditing={submitEmail}
+              <View style={{ gap: Spacing.one }}>
+                <AuthField
+                  label="Password"
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="At least 8 characters"
+                  secureTextEntry
+                  autoComplete={emailMode === 'signIn' ? 'current-password' : 'new-password'}
+                  textContentType={emailMode === 'signIn' ? 'password' : 'newPassword'}
+                  onSubmitEditing={submitEmail}
+                />
+                {emailMode === 'signIn' ? (
+                  <Pressable
+                    onPress={() => router.push('/forgot-password')}
+                    accessibilityRole="link"
+                    style={styles.forgot}>
+                    <ThemedText type="small" style={{ color: theme.accent, fontWeight: 500 }}>
+                      Forgot password?
+                    </ThemedText>
+                  </Pressable>
+                ) : null}
+              </View>
+              <FormError message={error} />
+              <PillButton
+                label={emailMode === 'signIn' ? 'Sign in' : 'Create account'}
+                onPress={submitEmail}
+                loading={busy}
               />
-              <ErrorText message={error} />
-              <PillButton label="Sign in" onPress={submitEmail} />
             </>
           ) : codeSent ? (
             <>
-              <ThemedText type="body" themeColor="textBody">
-                We sent a 6-digit code to +91 {phone}.
-              </ThemedText>
-              <Field
+              <FormNotice message={notice} />
+              <AuthField
                 label="Verification code"
                 value={code}
                 onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
@@ -140,29 +221,38 @@ export default function SignInScreen() {
                 textContentType="oneTimeCode"
                 onSubmitEditing={verifyCode}
               />
-              <ErrorText message={error} />
-              <PillButton label="Verify and sign in" onPress={verifyCode} />
-              <Pressable
-                onPress={() => {
-                  setCodeSent(false);
-                  setCode('');
-                }}
-                accessibilityRole="button"
-                style={styles.textButton}>
-                <ThemedText type="body" style={{ color: theme.accent, fontWeight: 600 }}>
-                  Change phone number
-                </ThemedText>
-              </Pressable>
+              <FormError message={error} />
+              <PillButton label="Verify and continue" onPress={verifyCode} loading={busy} />
+              <View style={styles.codeActions}>
+                <Pressable onPress={sendCode} disabled={busy} accessibilityRole="button" style={styles.textButton}>
+                  <ThemedText type="body" style={{ color: theme.accent, fontWeight: 600 }}>
+                    Resend code
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setCodeSent(false);
+                    setCode('');
+                    setError(null);
+                    setNotice(null);
+                  }}
+                  accessibilityRole="button"
+                  style={styles.textButton}>
+                  <ThemedText type="body" themeColor="textSecondary">
+                    Change number
+                  </ThemedText>
+                </Pressable>
+              </View>
             </>
           ) : (
             <>
-              <View style={styles.field}>
+              <View style={{ gap: Spacing.one }}>
                 <ThemedText type="overline" themeColor="textSecondary" nativeID="phone-label">
                   Phone number
                 </ThemedText>
                 <View style={[styles.phoneRow, { borderBottomColor: theme.rule }]}>
                   <ThemedText type="default" style={{ fontSize: 17 }}>
-                    +91
+                    {COUNTRY_CODE}
                   </ThemedText>
                   <TextInput
                     value={phone}
@@ -174,58 +264,31 @@ export default function SignInScreen() {
                     textContentType="telephoneNumber"
                     accessibilityLabelledBy="phone-label"
                     onSubmitEditing={sendCode}
-                    style={[styles.input, styles.phoneInput, { color: theme.text }]}
+                    style={[styles.phoneInput, { color: theme.text }]}
                   />
                 </View>
                 <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: 6 }}>
                   We&apos;ll text you a 6-digit code. No password needed.
                 </ThemedText>
               </View>
-              <ErrorText message={error} />
-              <PillButton label="Send code" onPress={sendCode} />
+              <FormError message={error} />
+              <PillButton label="Send code" onPress={sendCode} loading={busy} />
             </>
           )}
         </View>
 
         <View style={styles.footer}>
           <ThemedText type="body" themeColor="textSecondary">
-            New here?
+            {emailMode === 'signIn' ? 'New here?' : 'Already have an account?'}
           </ThemedText>
-          <Pressable onPress={signIn} accessibilityRole="button" hitSlop={8}>
+          <Pressable onPress={toggleEmailMode} accessibilityRole="button" hitSlop={8}>
             <ThemedText type="body" style={{ color: theme.accent, fontWeight: 600 }}>
-              Create an account
+              {emailMode === 'signIn' ? 'Create an account' : 'Sign in'}
             </ThemedText>
           </Pressable>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-}
-
-function Field({ label, ...inputProps }: TextInputProps & { label: string }) {
-  const theme = useTheme();
-  return (
-    <View style={styles.field}>
-      <ThemedText type="overline" themeColor="textSecondary">
-        {label}
-      </ThemedText>
-      <TextInput
-        accessibilityLabel={label}
-        placeholderTextColor={theme.textSecondary}
-        style={[styles.input, { color: theme.text, borderBottomColor: theme.rule, borderBottomWidth: 1 }]}
-        {...inputProps}
-      />
-    </View>
-  );
-}
-
-function ErrorText({ message }: { message: string | null }) {
-  const theme = useTheme();
-  if (!message) return null;
-  return (
-    <ThemedText type="small" accessibilityRole="alert" style={{ color: theme.danger }}>
-      {message}
-    </ThemedText>
   );
 }
 
@@ -253,13 +316,10 @@ const styles = StyleSheet.create({
     gap: 22,
     marginTop: -Spacing.two,
   },
-  field: {
-    gap: Spacing.one,
-  },
-  input: {
-    height: TouchTarget,
-    paddingHorizontal: 0,
-    fontSize: 17,
+  forgot: {
+    alignSelf: 'flex-end',
+    minHeight: TouchTarget,
+    justifyContent: 'center',
   },
   phoneRow: {
     flexDirection: 'row',
@@ -269,9 +329,15 @@ const styles = StyleSheet.create({
   },
   phoneInput: {
     flex: 1,
+    height: TouchTarget,
+    paddingHorizontal: 0,
+    fontSize: 17,
+  },
+  codeActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   textButton: {
-    alignSelf: 'center',
     minHeight: TouchTarget,
     justifyContent: 'center',
   },

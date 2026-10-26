@@ -36,7 +36,10 @@ import {
 // Shared column helpers
 // ---------------------------------------------------------------------------
 
-const id = () => uuid('id').primaryKey().default(sql`uuidv7()`);
+const id = () =>
+  uuid('id')
+    .primaryKey()
+    .default(sql`uuidv7()`);
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
 
@@ -59,9 +62,16 @@ const tsvector = customType<{ data: string }>({
 // ---------------------------------------------------------------------------
 
 export const workspaceKind = pgEnum('workspace_kind', ['personal', 'team']);
-export const workspaceRole = pgEnum('workspace_role', ['owner', 'admin', 'member']);
+export const workspaceRole = pgEnum('workspace_role', [
+  'owner',
+  'admin',
+  'member',
+]);
 export const authProvider = pgEnum('auth_provider', ['google']);
-export const verificationChannel = pgEnum('verification_channel', ['email', 'sms']);
+export const verificationChannel = pgEnum('verification_channel', [
+  'email',
+  'sms',
+]);
 export const verificationPurpose = pgEnum('verification_purpose', [
   'verify_email',
   'verify_phone',
@@ -82,9 +92,24 @@ export const blockType = pgEnum('block_type', [
   'image',
   'link',
 ]);
-export const resourceType = pgEnum('resource_type', ['book', 'article', 'documentation', 'link', 'other']);
-export const readingStatus = pgEnum('reading_status', ['want_to_read', 'reading', 'finished']);
-export const searchEntityType = pgEnum('search_entity_type', ['page', 'resource', 'highlight', 'journal_entry']);
+export const resourceType = pgEnum('resource_type', [
+  'book',
+  'article',
+  'documentation',
+  'link',
+  'other',
+]);
+export const readingStatus = pgEnum('reading_status', [
+  'want_to_read',
+  'reading',
+  'finished',
+]);
+export const searchEntityType = pgEnum('search_entity_type', [
+  'page',
+  'resource',
+  'highlight',
+  'journal_entry',
+]);
 
 // ---------------------------------------------------------------------------
 // Identity & authentication
@@ -108,7 +133,10 @@ export const users = pgTable(
     // Case-insensitive uniqueness without the citext extension.
     uniqueIndex('users_email_lower_key').on(sql`lower(${t.email})`),
     uniqueIndex('users_phone_key').on(t.phone),
-    check('users_has_contact', sql`${t.email} is not null or ${t.phone} is not null`),
+    check(
+      'users_has_contact',
+      sql`${t.email} is not null or ${t.phone} is not null`,
+    ),
   ],
 );
 
@@ -126,7 +154,10 @@ export const authIdentities = pgTable(
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },
   (t) => [
-    unique('auth_identities_provider_user_key').on(t.provider, t.providerUserId),
+    unique('auth_identities_provider_user_key').on(
+      t.provider,
+      t.providerUserId,
+    ),
     index('auth_identities_user_idx').on(t.userId),
   ],
 );
@@ -182,7 +213,11 @@ export const verificationCodes = pgTable(
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },
   (t) => [
-    index('verification_codes_target_idx').on(t.target, t.purpose, t.createdAt.desc()),
+    index('verification_codes_target_idx').on(
+      t.target,
+      t.purpose,
+      t.createdAt.desc(),
+    ),
     check('verification_codes_attempts_check', sql`${t.attempts} >= 0`),
   ],
 );
@@ -197,7 +232,9 @@ export const workspaces = pgTable(
     id: id(),
     name: text('name').notNull(),
     kind: workspaceKind('kind').notNull(),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     ...timestamps,
   },
   (t) => [
@@ -242,7 +279,9 @@ export const assets = pgTable(
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
     width: integer('width'),
     height: integer('height'),
-    uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
+    uploadedBy: uuid('uploaded_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },
   (t) => [
@@ -268,8 +307,12 @@ export const pages = pgTable(
     title: text('title').notNull().default(''),
     icon: text('icon'),
     position: text('position').notNull(),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
-    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    updatedBy: uuid('updated_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     archivedAt: timestamptz('archived_at'),
     deletedAt: timestamptz('deleted_at'),
     ...timestamps,
@@ -282,7 +325,10 @@ export const pages = pgTable(
       columns: [t.workspaceId, t.parentId],
       foreignColumns: [t.workspaceId, t.id],
     }).onDelete('cascade'),
-    check('pages_not_own_parent', sql`${t.parentId} is null or ${t.parentId} <> ${t.id}`),
+    check(
+      'pages_not_own_parent',
+      sql`${t.parentId} is null or ${t.parentId} <> ${t.id}`,
+    ),
     // Notes tree: children of a parent, in order.
     index('pages_tree_idx')
       .on(t.workspaceId, t.parentId, t.position)
@@ -316,7 +362,11 @@ export const pageFavorites = pgTable(
       columns: [t.workspaceId, t.pageId],
       foreignColumns: [pages.workspaceId, pages.id],
     }).onDelete('cascade'),
-    index('page_favorites_user_workspace_idx').on(t.userId, t.workspaceId, t.createdAt.desc()),
+    index('page_favorites_user_workspace_idx').on(
+      t.userId,
+      t.workspaceId,
+      t.createdAt.desc(),
+    ),
   ],
 );
 
@@ -330,11 +380,15 @@ export const blocks = pgTable(
     parentBlockId: uuid('parent_block_id'),
     type: blockType('type').notNull(),
     /** Type-specific payload (rich-text spans, checked state, code language, asset id…), validated with Zod. */
-    content: jsonb('content').notNull().default(sql`'{}'::jsonb`),
+    content: jsonb('content')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     position: text('position').notNull(),
     /** Incremented on every update; autosave sends the version it edited to detect conflicts. */
     version: integer('version').notNull().default(1),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     ...timestamps,
   },
   (t) => [
@@ -372,7 +426,10 @@ export const tags = pgTable(
   },
   (t) => [
     unique('tags_workspace_id_key').on(t.workspaceId, t.id),
-    uniqueIndex('tags_workspace_name_key').on(t.workspaceId, sql`lower(${t.name})`),
+    uniqueIndex('tags_workspace_name_key').on(
+      t.workspaceId,
+      sql`lower(${t.name})`,
+    ),
   ],
 );
 
@@ -387,7 +444,9 @@ export const collections = pgTable(
     description: text('description'),
     icon: text('icon'),
     position: text('position').notNull(),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     ...timestamps,
   },
   (t) => [
@@ -409,7 +468,10 @@ export const resources = pgTable(
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     type: resourceType('type').notNull(),
     title: text('title').notNull(),
-    authors: text('authors').array().notNull().default(sql`'{}'::text[]`),
+    authors: text('authors')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     url: text('url'),
     description: text('description'),
     coverAssetId: uuid('cover_asset_id'),
@@ -420,7 +482,9 @@ export const resources = pgTable(
     rating: smallint('rating'),
     /** Reading progress, 0–100. */
     progress: smallint('progress'),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     archivedAt: timestamptz('archived_at'),
     deletedAt: timestamptz('deleted_at'),
     ...timestamps,
@@ -460,8 +524,14 @@ export const bookDetails = pgTable(
     currentPage: integer('current_page'),
   },
   (t) => [
-    check('book_details_page_count_check', sql`${t.pageCount} is null or ${t.pageCount} > 0`),
-    check('book_details_current_page_check', sql`${t.currentPage} is null or ${t.currentPage} >= 0`),
+    check(
+      'book_details_page_count_check',
+      sql`${t.pageCount} is null or ${t.pageCount} > 0`,
+    ),
+    check(
+      'book_details_current_page_check',
+      sql`${t.currentPage} is null or ${t.currentPage} >= 0`,
+    ),
   ],
 );
 
@@ -478,7 +548,9 @@ export const highlights = pgTable(
     /** Reader-specific location (e-book CFI, timestamp in a video…). */
     location: jsonb('location'),
     color: text('color'),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     ...timestamps,
   },
   (t) => [
@@ -544,7 +616,11 @@ export const journalEntries = pgTable(
   (t) => [
     unique('journal_entries_workspace_id_key').on(t.workspaceId, t.id),
     // One entry per person per day; also serves the week-strip date range query.
-    unique('journal_entries_one_per_day').on(t.workspaceId, t.userId, t.entryDate),
+    unique('journal_entries_one_per_day').on(
+      t.workspaceId,
+      t.userId,
+      t.entryDate,
+    ),
   ],
 );
 
@@ -713,8 +789,14 @@ export const searchDocuments = pgTable(
     entityId: uuid('entity_id').notNull(),
     title: text('title').notNull().default(''),
     body: text('body').notNull().default(''),
-    tagIds: uuid('tag_ids').array().notNull().default(sql`'{}'::uuid[]`),
-    collectionIds: uuid('collection_ids').array().notNull().default(sql`'{}'::uuid[]`),
+    tagIds: uuid('tag_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    collectionIds: uuid('collection_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     /** Title matches rank above body matches. English stemming, so "hash" also finds "hashing". */
     searchVector: tsvector('search_vector')
       .notNull()
@@ -731,6 +813,9 @@ export const searchDocuments = pgTable(
     index('search_documents_vector_idx').using('gin', t.searchVector),
     index('search_documents_tags_idx').using('gin', t.tagIds),
     index('search_documents_collections_idx').using('gin', t.collectionIds),
-    index('search_documents_workspace_type_idx').on(t.workspaceId, t.entityType),
+    index('search_documents_workspace_type_idx').on(
+      t.workspaceId,
+      t.entityType,
+    ),
   ],
 );

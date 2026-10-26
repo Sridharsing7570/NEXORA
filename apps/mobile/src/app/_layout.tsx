@@ -36,7 +36,12 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { isSignedIn } = useSession();
+  const { status, isSignedIn } = useSession();
+
+  // Restoring the stored session takes a moment; the splash overlay covers it.
+  if (status === 'loading') {
+    return null;
+  }
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -47,6 +52,7 @@ function RootNavigator() {
       </Stack.Protected>
       <Stack.Protected guard={!isSignedIn}>
         <Stack.Screen name="sign-in" />
+        <Stack.Screen name="forgot-password" />
       </Stack.Protected>
     </Stack>
   );

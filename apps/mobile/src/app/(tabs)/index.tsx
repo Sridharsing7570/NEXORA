@@ -6,8 +6,8 @@ import { FloatingAction, Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { BigPercent, ListRow, SectionLabel } from '@/components/ui/primitives';
 import { Spacing, TouchTarget } from '@/constants/theme';
-import { books, findCollection, highlights, journalEntries, pages, sampleUser } from '@/data/sample';
-import { useSession } from '@/hooks/use-session';
+import { books, findCollection, highlights, journalEntries, pages } from '@/data/sample';
+import { displayName, useSession } from '@/hooks/use-session';
 import { useTheme } from '@/hooks/use-theme';
 
 function greeting(hour: number) {
@@ -28,7 +28,8 @@ function weekSummary() {
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { signOut } = useSession();
+  const { user, signOut } = useSession();
+  const name = displayName(user);
 
   const now = new Date();
   const dateLabel = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
@@ -38,7 +39,7 @@ export default function HomeScreen() {
   const recentPages = pages.filter((page) => !page.archived).slice(1, 4);
 
   const openProfile = () =>
-    Alert.alert(sampleUser.name, undefined, [
+    Alert.alert(user?.name ?? user?.email ?? user?.phone ?? 'Your account', undefined, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign out', style: 'destructive', onPress: signOut },
     ]);
@@ -54,14 +55,14 @@ export default function HomeScreen() {
           accessibilityRole="button"
           accessibilityLabel="Profile"
           style={[styles.avatar, { borderColor: theme.leader }]}>
-          <ThemedText type="item">{sampleUser.name.charAt(0)}</ThemedText>
+          <ThemedText type="item">{name.charAt(0).toUpperCase()}</ThemedText>
         </Pressable>
       </View>
 
       <ThemedText type="display" accessibilityRole="header" style={styles.greeting}>
         {greeting(now.getHours())},{'\n'}
         <ThemedText type="display" style={{ fontStyle: 'italic', color: theme.accent }}>
-          {sampleUser.name}.
+          {name}.
         </ThemedText>
       </ThemedText>
       <ThemedText type="reading" themeColor="textBody" style={styles.summary}>
