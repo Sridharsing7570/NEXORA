@@ -18,11 +18,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AuthField, FormError, FormNotice, validate } from '@/components/auth-form';
+import {
+  AuthField,
+  FormError,
+  FormNotice,
+  validate,
+} from '@/components/auth-form';
 import { ThemedText } from '@/components/themed-text';
 import { PillButton, TextTabs } from '@/components/ui/primitives';
 import { Spacing, TouchTarget } from '@/constants/theme';
-import { errorMessage } from '@/lib/api';
+import { ApiError, errorMessage } from '@/lib/api';
 import { authApi } from '@/lib/auth-api';
 import { useSession } from '@/hooks/use-session';
 import { useTheme } from '@/hooks/use-theme';
@@ -55,6 +60,11 @@ export default function SignInScreen() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * After a failed login, offer sign-up. The server deliberately does not say whether the email
+   * has an account, so the hint is shown for any rejected email/password.
+   */
+  const [suggestSignUp, setSuggestSignUp] = useState(false);
 
   const fullPhone = `${COUNTRY_CODE}${phone.replace(/\D/g, '')}`;
 
@@ -62,6 +72,7 @@ export default function SignInScreen() {
   const run = async (task: () => Promise<void>) => {
     setError(null);
     setNotice(null);
+    setSuggestSignUp(false);
     setBusy(true);
     try {
       await task();
@@ -76,12 +87,33 @@ export default function SignInScreen() {
     if (emailMode === 'signIn') {
       const parsed = validate(loginSchema, { email, password });
       if (parsed.error !== null) return setError(parsed.error);
-      void run(async () => completeSignIn(await authApi.login(parsed.data)));
+      void run(async () => {
+        try {
+          await completeSignIn(await authApi.login(parsed.data));
+        } catch (caught) {
+          // Rejected credentials (not a network error): the user may not have an account yet.
+          if (caught instanceof ApiError && caught.status === 401) {
+            setSuggestSignUp(true);
+          }
+          throw caught;
+        }
+      });
     } else {
-      const parsed = validate(registerSchema, { email, password, name: name.trim() || undefined });
+      const parsed = validate(registerSchema, {
+        email,
+        password,
+        name: name.trim() || undefined,
+      });
       if (parsed.error !== null) return setError(parsed.error);
       void run(async () => completeSignIn(await authApi.register(parsed.data)));
     }
+  };
+
+  /** Switches to sign-up, keeping the email and password the user already typed. */
+  const createAccountInstead = () => {
+    setEmailMode('register');
+    setSuggestSignUp(false);
+    setError(null);
   };
 
   const sendCode = () => {
@@ -108,36 +140,56 @@ export default function SignInScreen() {
     setMethod(next);
     setError(null);
     setNotice(null);
+    setSuggestSignUp(false);
   };
 
   const toggleEmailMode = () => {
     setMethod('email');
     setEmailMode((mode) => (mode === 'signIn' ? 'register' : 'signIn'));
     setError(null);
+    setSuggestSignUp(false);
   };
 
   const signInWithGoogle = () =>
-    Alert.alert('Google sign-in', 'Google sign-in is not available in this version of the app yet.');
+    Alert.alert(
+      'Google sign-in',
+      'Google sign-in is not available in this version of the app yet.',
+    );
 
   return (
     <KeyboardAvoidingView
       style={[styles.root, { backgroundColor: theme.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + Spacing.five, paddingBottom: insets.bottom + Spacing.five },
-        ]}>
-        <ThemedText type="heading" style={{ fontStyle: 'italic', fontWeight: 400 }}>
+          {
+            paddingTop: insets.top + Spacing.five,
+            paddingBottom: insets.bottom + Spacing.five,
+          },
+        ]}
+      >
+        <ThemedText
+          type="heading"
+          style={{ fontStyle: 'italic', fontWeight: 400 }}
+        >
           Nexora
         </ThemedText>
 
         <View style={styles.intro}>
           <ThemedText type="display" accessibilityRole="header">
-            {emailMode === 'register' && method === 'email' ? 'Start your\n' : 'Your knowledge,\n'}
-            <ThemedText type="display" style={{ fontStyle: 'italic', color: theme.accent }}>
-              {emailMode === 'register' && method === 'email' ? 'second brain.' : 'connected.'}
+            {emailMode === 'register' && method === 'email'
+              ? 'Start your\n'
+              : 'Your knowledge,\n'}
+            <ThemedText
+              type="display"
+              style={{ fontStyle: 'italic', color: theme.accent }}
+            >
+              {emailMode === 'register' && method === 'email'
+                ? 'second brain.'
+                : 'connected.'}
             </ThemedText>
           </ThemedText>
           <ThemedText type="reading" themeColor="textBody">
@@ -155,7 +207,12 @@ export default function SignInScreen() {
         />
 
         <View style={styles.form}>
-          <TextTabs label="Sign in with" options={methods} value={method} onChange={changeMethod} />
+          <TextTabs
+            label="Sign in with"
+            options={methods}
+            value={method}
+            onChange={changeMethod}
+          />
 
           {method === 'email' ? (
             <>
@@ -167,12 +224,17 @@ export default function SignInScreen() {
                   placeholder="What should we call you?"
                   autoComplete="name"
                   textContentType="name"
+                  // Email and password carry over from sign-in, so the name is what's left to fill.
+                  autoFocus={email.length > 0}
                 />
               ) : null}
               <AuthField
                 label="Email"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  setSuggestSignUp(false);
+                }}
                 placeholder="you@example.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -183,25 +245,56 @@ export default function SignInScreen() {
                 <AuthField
                   label="Password"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(value) => {
+                    setPassword(value);
+                    setSuggestSignUp(false);
+                  }}
                   placeholder="At least 8 characters"
                   secureTextEntry
-                  autoComplete={emailMode === 'signIn' ? 'current-password' : 'new-password'}
-                  textContentType={emailMode === 'signIn' ? 'password' : 'newPassword'}
+                  autoComplete={
+                    emailMode === 'signIn' ? 'current-password' : 'new-password'
+                  }
+                  textContentType={
+                    emailMode === 'signIn' ? 'password' : 'newPassword'
+                  }
                   onSubmitEditing={submitEmail}
                 />
                 {emailMode === 'signIn' ? (
                   <Pressable
                     onPress={() => router.push('/forgot-password')}
                     accessibilityRole="link"
-                    style={styles.forgot}>
-                    <ThemedText type="small" style={{ color: theme.accent, fontWeight: 500 }}>
+                    style={styles.forgot}
+                  >
+                    <ThemedText
+                      type="small"
+                      style={{ color: theme.accent, fontWeight: 500 }}
+                    >
                       Forgot password?
                     </ThemedText>
                   </Pressable>
                 ) : null}
               </View>
               <FormError message={error} />
+              {suggestSignUp && emailMode === 'signIn' ? (
+                <View
+                  style={[styles.missing, { borderLeftColor: theme.accent }]}
+                  accessibilityLiveRegion="polite">
+                  <ThemedText type="body" style={{ fontWeight: 600 }}>
+                    Don&apos;t have an account yet?
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textBody">
+                    Create one with this email and password in one step.
+                  </ThemedText>
+                  <Pressable
+                    onPress={createAccountInstead}
+                    accessibilityRole="button"
+                    style={styles.missingAction}>
+                    <ThemedText type="body" style={{ color: theme.accent, fontWeight: 600 }}>
+                      Create account →
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              ) : null}
               <PillButton
                 label={emailMode === 'signIn' ? 'Sign in' : 'Create account'}
                 onPress={submitEmail}
@@ -214,7 +307,9 @@ export default function SignInScreen() {
               <AuthField
                 label="Verification code"
                 value={code}
-                onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
+                onChangeText={(value) =>
+                  setCode(value.replace(/\D/g, '').slice(0, 6))
+                }
                 placeholder="123456"
                 keyboardType="number-pad"
                 autoComplete="one-time-code"
@@ -222,10 +317,22 @@ export default function SignInScreen() {
                 onSubmitEditing={verifyCode}
               />
               <FormError message={error} />
-              <PillButton label="Verify and continue" onPress={verifyCode} loading={busy} />
+              <PillButton
+                label="Verify and continue"
+                onPress={verifyCode}
+                loading={busy}
+              />
               <View style={styles.codeActions}>
-                <Pressable onPress={sendCode} disabled={busy} accessibilityRole="button" style={styles.textButton}>
-                  <ThemedText type="body" style={{ color: theme.accent, fontWeight: 600 }}>
+                <Pressable
+                  onPress={sendCode}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  style={styles.textButton}
+                >
+                  <ThemedText
+                    type="body"
+                    style={{ color: theme.accent, fontWeight: 600 }}
+                  >
                     Resend code
                   </ThemedText>
                 </Pressable>
@@ -237,7 +344,8 @@ export default function SignInScreen() {
                     setNotice(null);
                   }}
                   accessibilityRole="button"
-                  style={styles.textButton}>
+                  style={styles.textButton}
+                >
                   <ThemedText type="body" themeColor="textSecondary">
                     Change number
                   </ThemedText>
@@ -247,10 +355,16 @@ export default function SignInScreen() {
           ) : (
             <>
               <View style={{ gap: Spacing.one }}>
-                <ThemedText type="overline" themeColor="textSecondary" nativeID="phone-label">
+                <ThemedText
+                  type="overline"
+                  themeColor="textSecondary"
+                  nativeID="phone-label"
+                >
                   Phone number
                 </ThemedText>
-                <View style={[styles.phoneRow, { borderBottomColor: theme.rule }]}>
+                <View
+                  style={[styles.phoneRow, { borderBottomColor: theme.rule }]}
+                >
                   <ThemedText type="default" style={{ fontSize: 17 }}>
                     {COUNTRY_CODE}
                   </ThemedText>
@@ -267,7 +381,11 @@ export default function SignInScreen() {
                     style={[styles.phoneInput, { color: theme.text }]}
                   />
                 </View>
-                <ThemedText type="small" themeColor="textSecondary" style={{ marginTop: 6 }}>
+                <ThemedText
+                  type="small"
+                  themeColor="textSecondary"
+                  style={{ marginTop: 6 }}
+                >
                   We&apos;ll text you a 6-digit code. No password needed.
                 </ThemedText>
               </View>
@@ -281,8 +399,15 @@ export default function SignInScreen() {
           <ThemedText type="body" themeColor="textSecondary">
             {emailMode === 'signIn' ? 'New here?' : 'Already have an account?'}
           </ThemedText>
-          <Pressable onPress={toggleEmailMode} accessibilityRole="button" hitSlop={8}>
-            <ThemedText type="body" style={{ color: theme.accent, fontWeight: 600 }}>
+          <Pressable
+            onPress={toggleEmailMode}
+            accessibilityRole="button"
+            hitSlop={8}
+          >
+            <ThemedText
+              type="body"
+              style={{ color: theme.accent, fontWeight: 600 }}
+            >
               {emailMode === 'signIn' ? 'Create an account' : 'Sign in'}
             </ThemedText>
           </Pressable>
@@ -332,6 +457,16 @@ const styles = StyleSheet.create({
     height: TouchTarget,
     paddingHorizontal: 0,
     fontSize: 17,
+  },
+  missing: {
+    gap: Spacing.one,
+    paddingLeft: Spacing.three,
+    borderLeftWidth: 2,
+  },
+  missingAction: {
+    alignSelf: 'flex-start',
+    minHeight: TouchTarget,
+    justifyContent: 'center',
   },
   codeActions: {
     flexDirection: 'row',

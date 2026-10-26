@@ -41,6 +41,8 @@ const icons = {
   divider: { ios: 'minus', android: 'horizontal_rule', web: 'horizontal_rule' },
   image: { ios: 'photo', android: 'image', web: 'image' },
   check: { ios: 'checkmark', android: 'check', web: 'check' },
+  eye: { ios: 'eye', android: 'visibility', web: 'visibility' },
+  eyeSlash: { ios: 'eye.slash', android: 'visibility_off', web: 'visibility_off' },
   keyboardHide: {
     ios: 'keyboard.chevron.compact.down',
     android: 'keyboard_hide',

@@ -25,6 +25,8 @@ type Session = {
   /** Store the tokens and profile returned by any sign-in endpoint. */
   completeSignIn: (response: AuthResponse) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Revokes every session on the server, including this one. Throws if the server is unreachable. */
+  signOutEverywhere: () => Promise<void>;
   /** Re-fetch the profile and workspaces from the server. */
   reloadProfile: () => Promise<void>;
 };
@@ -97,6 +99,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await endSession();
   }, [endSession]);
 
+  const signOutEverywhere = useCallback(async () => {
+    // Unlike signOut, this must reach the server; otherwise other devices stay signed in.
+    await authApi.logoutAll();
+    await endSession();
+  }, [endSession]);
+
   const reloadProfile = useCallback(async () => {
     await applyProfile(await authApi.me());
   }, [applyProfile]);
@@ -109,9 +117,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       workspaces: me?.workspaces ?? [],
       completeSignIn,
       signOut,
+      signOutEverywhere,
       reloadProfile,
     }),
-    [status, me, completeSignIn, signOut, reloadProfile],
+    [status, me, completeSignIn, signOut, signOutEverywhere, reloadProfile],
   );
 
   return <SessionContext value={value}>{children}</SessionContext>;

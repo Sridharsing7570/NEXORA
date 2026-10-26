@@ -1,11 +1,16 @@
 import type {
   AuthResponse,
+  AuthTokens,
+  ChangePasswordRequest,
   ForgotPasswordRequest,
   LoginRequest,
   MeResponse,
   PhoneVerifyRequest,
   RegisterRequest,
   ResetPasswordRequest,
+  UpdateProfileRequest,
+  UserProfile,
+  VerifyEmailRequest,
 } from '@repo/api/auth/auth.schemas';
 
 import { api } from '@/lib/api';
@@ -35,4 +40,16 @@ export const authApi = {
     api<void>('/auth/logout', { method: 'POST', body: { refreshToken }, auth: false }),
 
   me: () => api<MeResponse>('/users/me'),
+
+  updateProfile: (body: UpdateProfileRequest) => api<UserProfile>('/users/me', { method: 'PATCH', body }),
+
+  requestEmailVerification: () => api<void>('/auth/email/request-verification', { method: 'POST' }),
+
+  verifyEmail: (body: VerifyEmailRequest) => api<void>('/auth/email/verify', { method: 'POST', body }),
+
+  /** Signs out every other session and returns fresh tokens for this one. */
+  changePassword: (body: ChangePasswordRequest) =>
+    api<{ tokens: AuthTokens }>('/auth/password/change', { method: 'POST', body }),
+
+  logoutAll: () => api<void>('/auth/logout-all', { method: 'POST' }),
 };

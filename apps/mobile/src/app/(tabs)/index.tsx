@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { FloatingAction, Screen } from '@/components/screen';
@@ -28,7 +28,7 @@ function weekSummary() {
 export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { user, signOut } = useSession();
+  const { user } = useSession();
   const name = displayName(user);
 
   const now = new Date();
@@ -38,12 +38,6 @@ export default function HomeScreen() {
   // Sample data is already in most-recently-edited order; skip the index page at the top.
   const recentPages = pages.filter((page) => !page.archived).slice(1, 4);
 
-  const openProfile = () =>
-    Alert.alert(user?.name ?? user?.email ?? user?.phone ?? 'Your account', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: signOut },
-    ]);
-
   return (
     <Screen fab={<FloatingAction label="Write" icon="pen" onPress={() => router.push('/page/new')} />}>
       <View style={styles.topRow}>
@@ -51,7 +45,7 @@ export default function HomeScreen() {
           {dateLabel}
         </ThemedText>
         <Pressable
-          onPress={openProfile}
+          onPress={() => router.push('/profile')}
           accessibilityRole="button"
           accessibilityLabel="Profile"
           style={[styles.avatar, { borderColor: theme.leader }]}>

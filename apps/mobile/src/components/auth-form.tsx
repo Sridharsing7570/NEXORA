@@ -1,24 +1,44 @@
-import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import type { ZodType } from 'zod';
 
+import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { TouchTarget } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-/** Underlined text field with an uppercase label, as used on the auth screens. */
-export function AuthField({ label, ...inputProps }: TextInputProps & { label: string }) {
+/**
+ * Underlined text field with an uppercase label, as used on the auth screens.
+ * Password fields (`secureTextEntry`) get an eye button to show or hide what was typed.
+ */
+export function AuthField({ label, secureTextEntry, ...inputProps }: TextInputProps & { label: string }) {
   const theme = useTheme();
+  const [revealed, setRevealed] = useState(false);
+
   return (
     <View style={styles.field}>
       <ThemedText type="overline" themeColor="textSecondary">
         {label}
       </ThemedText>
-      <TextInput
-        accessibilityLabel={label}
-        placeholderTextColor={theme.textSecondary}
-        style={[styles.input, { color: theme.text, borderBottomColor: theme.rule }]}
-        {...inputProps}
-      />
+      <View style={[styles.row, { borderBottomColor: theme.rule }]}>
+        <TextInput
+          accessibilityLabel={label}
+          placeholderTextColor={theme.textSecondary}
+          secureTextEntry={secureTextEntry && !revealed}
+          style={[styles.input, { color: theme.text }]}
+          {...inputProps}
+        />
+        {secureTextEntry ? (
+          <Pressable
+            onPress={() => setRevealed((value) => !value)}
+            accessibilityRole="button"
+            accessibilityLabel={revealed ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+            hitSlop={8}
+            style={styles.toggle}>
+            <Icon name={revealed ? 'eyeSlash' : 'eye'} size={20} color={theme.textSecondary} />
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -57,10 +77,22 @@ const styles = StyleSheet.create({
   field: {
     gap: 4,
   },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+  },
   input: {
+    flex: 1,
     height: TouchTarget,
     paddingHorizontal: 0,
     fontSize: 17,
-    borderBottomWidth: 1,
+  },
+  toggle: {
+    width: TouchTarget,
+    height: TouchTarget,
+    marginRight: -12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

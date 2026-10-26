@@ -37,7 +37,7 @@ describe('passwords', () => {
     await expect(verifyPassword('x', 'bcrypt$1$2$3$a$b')).resolves.toBe(false);
   });
 
-  it('provides a stable dummy hash for timing-safe misses', async () => {
+  it('provides a stable dummy hash that never matches', async () => {
     const dummy = await getDummyPasswordHash();
 
     expect(await getDummyPasswordHash()).toBe(dummy);

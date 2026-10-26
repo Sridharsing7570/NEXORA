@@ -81,17 +81,24 @@ export class AuthService {
     return { user: toProfile(user), tokens, isNewUser: true };
   }
 
+  /**
+   * Every failure — unknown email, account without a password, wrong password — gets the same
+   * 401, message and timing, so login cannot be used to find out which emails are registered.
+   * The app offers "Create an account" after any failed attempt instead.
+   */
   async login(
     request: LoginRequest,
     client: ClientInfo,
   ): Promise<AuthResponse> {
     const user = await this.users.findByEmail(request.email);
-    if (!user?.passwordHash) {
-      // Same work as a real check, so timing does not reveal whether the account exists.
-      await verifyPassword(request.password, await getDummyPasswordHash());
-      throw new UnauthorizedException(INVALID_CREDENTIALS);
-    }
-    if (!(await verifyPassword(request.password, user.passwordHash))) {
+    // Without an account (or a password) still run a real scrypt check, so the response takes
+    // as long as a wrong password would.
+    const passwordHash = user?.passwordHash ?? (await getDummyPasswordHash());
+    const passwordMatches = await verifyPassword(
+      request.password,
+      passwordHash,
+    );
+    if (!user?.passwordHash || !passwordMatches) {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
     return {

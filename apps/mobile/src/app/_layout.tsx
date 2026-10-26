@@ -49,6 +49,7 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="page/[id]" />
         <Stack.Screen name="book/[id]" />
+        <Stack.Screen name="profile" />
       </Stack.Protected>
       <Stack.Protected guard={!isSignedIn}>
         <Stack.Screen name="sign-in" />

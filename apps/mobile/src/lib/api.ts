@@ -30,6 +30,8 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly issues: ApiIssue[] = [],
+    /** Machine-readable reason from the server, when it sends one in the `code` field. */
+    readonly code: string | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -155,9 +157,14 @@ async function send<T>(method: string, path: string, body?: unknown, token?: str
   const payload: unknown = text ? safeJson(text) : null;
 
   if (!response.ok) {
-    const errorBody = (payload ?? {}) as { message?: string | string[]; issues?: ApiIssue[] };
+    const errorBody = (payload ?? {}) as { message?: string | string[]; issues?: ApiIssue[]; code?: string };
     const message = Array.isArray(errorBody.message) ? errorBody.message[0] : errorBody.message;
-    throw new ApiError(response.status, message ?? 'Something went wrong. Please try again.', errorBody.issues ?? []);
+    throw new ApiError(
+      response.status,
+      message ?? 'Something went wrong. Please try again.',
+      errorBody.issues ?? [],
+      errorBody.code ?? null,
+    );
   }
   return payload as T;
 }

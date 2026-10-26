@@ -70,8 +70,8 @@ export async function verifyPassword(
 let dummyHash: Promise<string> | undefined;
 
 /**
- * A real hash of a random password. Comparing against it when the account does not exist keeps
- * login timing the same for unknown emails, so response time does not reveal which emails exist.
+ * A real hash of a random password. Login compares against it when the account does not exist
+ * (or has no password), so response time does not reveal which emails are registered.
  */
 export function getDummyPasswordHash(): Promise<string> {
   dummyHash ??= hashPassword(randomBytes(16).toString('hex'));
